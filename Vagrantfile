@@ -2,17 +2,15 @@
 # vi: set ft=ruby :
 
 synced_folder  = ENV[     'SYNCED_FOLDER'      ]  || "/home/vagrant/#{File.basename(Dir.pwd)}"
-memory         = ENV[           'MEMORY'       ]  || 8192
-cpus           = ENV[           'CPUS'         ]  || 8
+memory         = ENV[           'MEMORY'       ]  || 4096
+cpus           = ENV[           'CPUS'         ]  || 4
 vm_name        = ENV[           'VM_NAME'      ]  || File.basename(Dir.pwd)
 forwarded_ports= []
 provisioners   = [
   "node",
   "python",
-  "ripgrep",
   "docker",
   "starship",
-  "rust-core-utils",
   "rust-toolchain",
   "spacevim",
 ]
@@ -29,7 +27,7 @@ Vagrant.configure("2") do |config|
   config.vm.hostname = "#{vm_name}"
   config.vm.synced_folder ".","#{synced_folder}",auto_correct:true, owner: "vagrant",group: "vagrant",disabled:true
   config.vm.provider "virtualbox" do |vb, override|
-    override.vm.box="generic/debian10"
+    override.vm.box="generic/ubuntu2104"
     vb.memory = "#{memory}"
     vb.cpus   = "#{cpus}"
     # => enable nested virtualization
@@ -38,7 +36,7 @@ Vagrant.configure("2") do |config|
       auto_correct:true, owner: "vagrant",group: "vagrant",type: "virtualbox"
   end if Vagrant.has_plugin?('vagrant-vbguest')
   config.vm.provider "hyperv" do |h,override|
-    override.vm.box="generic/debian10"
+    override.vm.box="generic/ubuntu2104"
     h.enable_virtualization_extensions = true
     h.linked_clone = true
     h.cpus   = "#{cpus}"
@@ -49,7 +47,7 @@ Vagrant.configure("2") do |config|
     owner: "vagrant",group: "vagrant"
   end
   config.vm.provider "libvirt" do |libvirt,override|
-    override.vm.box="generic/debian10"
+    override.vm.box="generic/ubuntu2104"
     libvirt.memory = "#{memory}"
     libvirt.cpus = "#{cpus}"
     libvirt.nested = true
