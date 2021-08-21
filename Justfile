@@ -312,7 +312,7 @@ bootstrap-python: _remove-pip
     if [[ ! " ${paths[@]} " =~ " ${HOME}/.local/bin " ]]; then
         echo "*** adding $HOME/.local/bin to user's PATH"
         [ ! -d "$HOME/.local/bin" ] && mkdir -p "$HOME/.local/bin" || true ;
-        echo 'export PATH="${PATH}:${HOME}/.local/bin"' >> ~/.bashrc
+        grep -qF 'local/bin' ~/.bashrc || echo 'export PATH="${PATH}:${HOME}/.local/bin"' >> ~/.bashrc
     fi
 
 # ─── ENSURE PYTHON DEPENDENCIES ARE UPDATED ─────────────────────────────────────
@@ -325,10 +325,7 @@ update-python-pkgs: bootstrap-python
     IFS=':' read -a paths <<< "$(printenv PATH)" ;
     [[ ! " ${paths[@]} " =~ " ${HOME}/.local/bin " ]] && export PATH="${PATH}:${HOME}/.local/bin" || true
     echo >&2 "*** ensuring all user installed python packages have been updated to latest versions"
-    upgradeable=($( $(which python3) -m pip list --user --outdated --format=freeze 2>/dev/null \
-    | (/bin/grep -v '^\-e' || true) \
-    | (/bin/cut -d = -f 1 || true) \
-    ))
+    upgradeable=($($(which python3) -m pip list --user --format=freeze 2>/dev/null | awk 'BEGIN{FS=OFS="="}/^\-e/ {print $1}'))
     if [ ${#upgradeable[@]} -ne 0  ];then
       echo >&2 "*** upgrading outdated python dependencies : ${upgradeable[@]}"
       $(which python3) -m pip install \
@@ -379,10 +376,7 @@ install-python-dependencies: update-python-pkgs
     isort \
     coverage \
     "
-    installed=($( $(which python3) -m pip list --user --format=freeze 2>/dev/null \
-    | (/bin/grep -v '^\-e' || true) \
-    | cut -d = -f 1 || true \
-    ))
+    installed=($($(which python3) -m pip list --user --format=freeze 2>/dev/null | awk 'BEGIN{FS=OFS="="}/^\-e/ {print $1}'))
     IFS=' ' read -a PYTHON_PACKAGES <<< "$PYTHON_PACKAGES" ;
     to_install=()
     if [ ${#PYTHON_PACKAGES[@]} -ne 0  ];then
@@ -551,7 +545,7 @@ alias ur := update-rust
 
 update-rust: bootstrap-rust
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -xeuo pipefail
     echo >&2 "*** ensuring rustup has been updated."
     rustup update >/dev/null 2>&1
     echo >&2 "*** ensuring rust nightly and stable toolchains are installed."
@@ -572,7 +566,7 @@ update-rust: bootstrap-rust
 # ─── BUILDS AND INSTALLS RUST PACKAGE FROM SOURCE ───────────────────────────────
 install-rust-package name:
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -xeuo pipefail
     if  ! command -- cargo --version > /dev/null 2>&1 ; then
         echo >&2 "*** cannot install '{{ name }}' as rust toolchain has not been installed"
         exit 1
@@ -580,7 +574,7 @@ install-rust-package name:
         true
     fi
 
-    installed_packages=($(cargo install --list | /bin/grep ':' | awk '{print $1}'))
+    installed_packages=($(cargo install --list | awk '/:/{print $1}'))
     mkdir -p {{ justfile_directory() }}/tmp
     rm -rf {{ justfile_directory() }}/tmp/rust-fail.txt
     if [[ ! " ${installed_packages[@]} " =~ " {{ name }} " ]]; then
@@ -602,11 +596,9 @@ install-rust-dependencies: update-rust
     RUST_PACKAGES="\
       jsonfmt \
       prose \
-      mdcat \
       bat \
-      hyperfine \
-      bottom \
       convco \
+      skim \
     "
     IFS=' ' read -a RUST_PACKAGES <<< "$RUST_PACKAGES" ;
     if [ ${#RUST_PACKAGES[@]} -ne 0  ];then
@@ -932,7 +924,9 @@ alias pc := pre-commit
 
 pre-commit:
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -xeuo pipefail
+    IFS=':' read -a paths <<< "$(printenv PATH)" ;
+    [[ ! " ${paths[@]} " =~ " ${HOME}/.local/bin " ]] && export PATH="${PATH}:${HOME}/.local/bin" || true
     pushd "{{ justfile_directory() }}" > /dev/null 2>&1
     if [ -r .pre-commit-config.yaml ]; then
       git add ".pre-commit-config.yaml"
@@ -951,9 +945,12 @@ git-fetch:
     set -euo pipefail
     pushd "{{ justfile_directory() }}" > /dev/null 2>&1
     git fetch -p ;
-    for branch in $(git branch -vv | grep ': gone]' | awk '{print $1}'); do
-      git branch -D "$branch";
-    done
+    to_remove=($(git branch -vv | awk '/: gone]/ {print $1}'))
+    if [ ${#to_remove[@]} -ne 0  ]; then
+      for branch in "${to_remove[@]}"; do
+        git branch -D "$branch";
+      done
+    fi
     popd > /dev/null 2>&1
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -1128,6 +1125,8 @@ lxc-render-profile: _docker-pull-renderer
     set -euo pipefail
     docker run \
         --env "USER=$USER" \
+        --env "PWD={{ justfile_directory() }}" \
+        --env "SHIFT_FS=$(modinfo shiftfs > /dev/null 2>&1 && echo true || echo false)" \
         --env "PASSWD=$(openssl passwd -1 -salt SaltSalt '$USER' )" \
         --env "profile={{ project_name }}" \
         -w "/workspace" \
@@ -1240,6 +1239,8 @@ lxc-profile *path: _docker-pull-renderer ssh-key
     echo >&2 "*** ensuring '{{ project_name }}-debian' LXD profile matches our requirements" ;
     docker run \
         --env "USER=$USER" \
+        --env "PWD={{ justfile_directory() }}" \
+        --env "SHIFT_FS=$(modinfo shiftfs > /dev/null 2>&1 && echo true || echo false)" \
         --env "PASSWD=$(openssl passwd -1 -salt SaltSalt '$USER' )" \
         --env "profile={{ project_name }}" \
         -w "/workspace" \
@@ -1260,7 +1261,7 @@ lxc-launch name:
     --profile="{{ project_name }}-debian" \
     images:debian/bullseye/cloud \
     "{{ name }}" 2>/dev/null \
-    || lxc start "{{ name }}" 2>/dev/null
+    || lxc start "{{ name }}" 2>/dev/null || true
     just lxc-wait "{{ name }}"
     just ssh-config
     just hosts-config
@@ -1290,7 +1291,6 @@ lxc-tail-logs *name:
 # ─── QUICK CREATION OF A SINGLE SANDBOX NODE ────────────────────────────────────
 
 alias sandbox := lxc-sandbox
-alias devcontainer := lxc-sandbox
 
 lxc-sandbox *name: lxc-profile
     #!/usr/bin/env bash
@@ -1298,6 +1298,14 @@ lxc-sandbox *name: lxc-profile
     name='{{ project_name }}'
     [ ! -z '{{ name }}' ] && name='{{ name }}' || true
     just lxc-launch "${name}"
+
+devcontainer *name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    name='{{ project_name }}'
+    [ ! -z '{{ name }}' ] && name='{{ name }}' || true
+    just lxc-sandbox "${name}"
+    ssh "${name}" 2>/dev/null -- '[[ -d /workspace ]] && ( echo true && cd /workspace && source /etc/profile && just bootstrap ) || echo "workspace/ not found "'
 
 # ─── TEARDOWN LXC NODES ─────────────────────────────────────────────────────────
 
