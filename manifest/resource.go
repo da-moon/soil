@@ -2,10 +2,11 @@ package manifest
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
 	"github.com/mitchellh/copystructure"
-	"strings"
 )
 
 const (
@@ -26,16 +27,14 @@ func (r *Resources) Append(v interface{}) (err error) {
 }
 
 // Resources are referenced by ${resource.<pod>.<name>}
+//go:generate gomodifytags -override -file $GOFILE -struct Resource -add-tags json -w -transform snakecase
 type Resource struct {
-
 	// Resource name unique within pod
-	Name string `hcl:"-"`
-
+	Name string `hcl:"-" json:"name"`
 	// Provider
-	Provider string `hcl:"-"`
-
+	Provider string `hcl:"-" json:"provider"`
 	// Request config
-	Config map[string]interface{} `json:",omitempty" hcl:"-"`
+	Config map[string]interface{} `json:"config,omitempty" hcl:"-"`
 }
 
 func (r Resource) GetID(parent ...string) string {

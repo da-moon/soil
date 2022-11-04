@@ -1,12 +1,14 @@
-package agent
+package server
 
 import (
 	"context"
+	"regexp"
+
 	"github.com/akaspin/logx"
 	"github.com/akaspin/supervisor"
 	"github.com/da-moon/soil/agent/allocation"
 	"github.com/da-moon/soil/agent/api"
-	"github.com/da-moon/soil/agent/api/api-server"
+	api_server "github.com/da-moon/soil/agent/api/api-server"
 	"github.com/da-moon/soil/agent/bus"
 	"github.com/da-moon/soil/agent/bus/pipe"
 	"github.com/da-moon/soil/agent/cluster"
@@ -17,7 +19,6 @@ import (
 	"github.com/da-moon/soil/lib"
 	"github.com/da-moon/soil/manifest"
 	"github.com/da-moon/soil/proto"
-	"regexp"
 )
 
 var ServerVersion string
@@ -47,24 +48,7 @@ type Server struct {
 	}
 }
 
-func NewServer(ctx context.Context, log *logx.Log, options ServerOptions) (s *Server) {
-	s = &Server{
-		ctx:     ctx,
-		log:     log.GetLog("server"),
-		options: options,
-	}
-	s.kv = cluster.NewKV(ctx, log, cluster.DefaultBackendFactory)
-
-	// Recovery
-
-	systemPaths := allocation.DefaultSystemPaths()
-	var state allocation.PodSlice
-	if recoveryErr := state.FromFilesystem(systemPaths, allocation.DefaultDbusDiscoveryFunc); recoveryErr != nil {
-		s.log.Errorf("recovered with failure: %v", recoveryErr)
-	}
-
-	// provision
-
+func newProvisionArbiter(ctx context.Context, log *logx.Log) *scheduler.Arbiter {
 	provisionArbiter := scheduler.NewArbiter(ctx, log, "provision",
 		scheduler.ArbiterConfig{
 			Required: manifest.Constraint{"${agent.drain}": "!= true"},
@@ -72,7 +56,13 @@ func NewServer(ctx context.Context, log *logx.Log, options ServerOptions) (s *Se
 				regexp.MustCompile(`^provision\..+`),
 			},
 		})
+	return provisionArbiter
+}
+func newProvisionDrainPipe(provisionArbiter *scheduler.Arbiter) *pipe.Divert {
 	provisionDrainPipe := pipe.NewDivert(provisionArbiter, bus.NewMessage("private", map[string]string{"agent.drain": "true"}))
+	return provisionDrainPipe
+}
+func newProvisionStrictPipe(log *logx.Log, provisionDrainPipe *pipe.Divert) *pipe.StrictPipe {
 	provisionStrictPipe := pipe.NewStrict(
 		"private", log, provisionDrainPipe,
 		"meta",
@@ -80,6 +70,25 @@ func NewServer(ctx context.Context, log *logx.Log, options ServerOptions) (s *Se
 		"resource",  // downstream from provision evaluator
 		"provision", // upstream from provision executor
 	)
+	return provisionStrictPipe
+}
+func NewServer(ctx context.Context, log *logx.Log, options ServerOptions) (s *Server) {
+	s = &Server{
+		ctx:     ctx,
+		log:     log.GetLog("server"),
+		options: options,
+	}
+	s.kv = cluster.NewKV(ctx, log, cluster.DefaultBackendFactory)
+	// Recovery
+	systemPaths := allocation.DefaultSystemPaths()
+	var state allocation.PodSlice
+	if recoveryErr := state.FromFilesystem(systemPaths, allocation.DefaultDbusDiscoveryFunc); recoveryErr != nil {
+		s.log.Errorf("recovered with failure: %v", recoveryErr)
+	}
+	// provision
+	provisionArbiter := newProvisionArbiter(ctx, log)
+	provisionDrainPipe := newProvisionDrainPipe(provisionArbiter)
+	provisionStrictPipe := newProvisionStrictPipe(log, provisionDrainPipe)
 	provisionStateConsumer := pipe.NewLift("provision", pipe.NewTee(
 		provisionStrictPipe,
 	))
@@ -88,9 +97,7 @@ func NewServer(ctx context.Context, log *logx.Log, options ServerOptions) (s *Se
 		Recovery:       state,
 		StatusConsumer: provisionStateConsumer,
 	})
-
 	// Resource
-
 	resourceArbiter := scheduler.NewArbiter(ctx, log, "resource", scheduler.ArbiterConfig{
 		Required: manifest.Constraint{"${agent.drain}": "!= true"},
 	})
@@ -107,7 +114,6 @@ func NewServer(ctx context.Context, log *logx.Log, options ServerOptions) (s *Se
 		state)
 
 	// Provider evaluator
-
 	providerArbiter := scheduler.NewArbiter(ctx, log, "provider", scheduler.ArbiterConfig{
 		Required: manifest.Constraint{"${agent.drain}": "!= true"},
 		ConstraintOnly: []*regexp.Regexp{
@@ -140,24 +146,21 @@ func NewServer(ctx context.Context, log *logx.Log, options ServerOptions) (s *Se
 	s.endpoints.statusNodesGet = api.NewClusterNodesGet(log)
 	s.endpoints.registryGet = api.NewRegistryPodsGet()
 
+	// s.initRoutes()
 	s.api = api_server.NewRouter(s.log,
 		// status
 		api.NewStatusPingGet(),
-
 		// agent
 		api.NewAgentReloadPut(s.Configure),
 		api.NewAgentDrainPut(drainFn),
 		api.NewAgentDrainDelete(drainFn),
-
 		// cluster
 		s.endpoints.statusNodesGet,
-
 		// registry
 		s.endpoints.registryGet,
 		api.NewRegistryPodsPut(s.log, s.kv.PermanentStore("registry")),
 		api.NewRegistryPodsDelete(s.log, s.kv.PermanentStore("registry")),
 	)
-
 	s.sink = scheduler.NewSink(ctx, s.log, state,
 		scheduler.NewBoundedEvaluator(providerArbiter, providerEvaluator),
 		scheduler.NewBoundedEvaluator(resourceArbiter, resourceEvaluator),
@@ -180,11 +183,29 @@ func NewServer(ctx context.Context, log *logx.Log, options ServerOptions) (s *Se
 	return
 }
 
+// initRoutes initializes server request routers
+// TODO(damoon) add checks to make sure this function is only called
+// once, before server has started
+// func (s *Server) initRoutes() {
+// 	s.api = api_server.NewRouter(s.log,
+// 		// status
+// 		api.NewStatusPingGet(),
+// 		// agent
+// 		api.NewAgentReloadPut(s.Configure),
+// 		api.NewAgentDrainPut(drainFn),
+// 		api.NewAgentDrainDelete(drainFn),
+// 		// cluster
+// 		s.endpoints.statusNodesGet,
+// 		// registry
+// 		s.endpoints.registryGet,
+// 		api.NewRegistryPodsPut(s.log, s.kv.PermanentStore("registry")),
+// 		api.NewRegistryPodsDelete(s.log, s.kv.PermanentStore("registry")),
+// 	)
+// }
 func (s *Server) Open() (err error) {
 	if err = s.sv.Open(); err != nil {
 		return
 	}
-
 	s.kv.Producer("nodes").Subscribe(s.ctx, pipe.NewSlice(s.log, pipe.NewTee(
 		s.api,
 		s.endpoints.statusNodesGet.Processor().(bus.Consumer),
@@ -193,7 +214,6 @@ func (s *Server) Open() (err error) {
 		s.sink,
 		s.endpoints.registryGet.Processor().(bus.Consumer),
 	)))
-
 	s.Configure()
 	return
 }
@@ -211,11 +231,9 @@ func (s *Server) Configure() {
 	var buffers lib.StaticBuffers
 	if err := buffers.ReadFiles(s.options.ConfigPath...); err != nil {
 		s.log.Errorf("error reading configs: %v", err)
-
 	}
 	serverCfg := DefaultConfig()
 	serverCfg.Meta = lib.CloneMap(s.options.Meta)
-
 	if err := serverCfg.Unmarshal(buffers.GetReaders()...); err != nil {
 		s.log.Errorf("unmarshal server configs: %v", err)
 	}
@@ -228,9 +246,7 @@ func (s *Server) Configure() {
 	if err := (&clusterConfig).Unmarshal(buffers.GetReaders()...); err != nil {
 		s.log.Errorf("unmarshal cluster config: %v", err)
 	}
-
 	s.kv.Configure(clusterConfig)
-
 	// announce node
 	s.kv.VolatileStore("nodes").ConsumeMessage(bus.NewMessage("", proto.NodeInfo{
 		ID:        clusterConfig.NodeID,
@@ -238,10 +254,8 @@ func (s *Server) Configure() {
 		Version:   proto.Version,
 		API:       proto.APIV1Version,
 	}))
-
 	s.confPipe.ConsumeMessage(bus.NewMessage("meta", serverCfg.Meta))
 	s.confPipe.ConsumeMessage(bus.NewMessage("system", serverCfg.System))
-
 	s.sink.ConsumeRegistry(registry)
 	s.log.Debug("configure: done")
 }

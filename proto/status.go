@@ -1,10 +1,11 @@
 package proto
 
+//go:generate gomodifytags -override -file $GOFILE -struct NodeInfo -add-tags json -w -transform snakecase
 type NodeInfo struct {
-	ID        string
-	Advertise string
-	Version   string
-	API       string
+	ID        string `json:"id"`
+	Advertise string `json:"advertise"`
+	Version   string `json:"version"`
+	API       string `json:"api"`
 }
 
 type NodesInfo []NodeInfo

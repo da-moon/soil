@@ -1,9 +1,10 @@
 package manifest
 
 import (
+	"strings"
+
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
-	"strings"
 )
 
 type Blobs []Blob
@@ -21,11 +22,12 @@ func (b *Blobs) Append(v interface{}) (err error) {
 }
 
 // Pod file
+//go:generate gomodifytags -override -file $GOFILE -struct Blob -add-tags json -w -transform snakecase
 type Blob struct {
-	Name        string
-	Permissions int  `json:",omitempty"`
-	Leave       bool `json:",omitempty"`
-	Source      string
+	Name        string `json:"name"`
+	Source      string `json:"source"`
+	Permissions int    `json:"permissions,omitempty"`
+	Leave       bool   `json:"leave,omitempty"`
 }
 
 func (b Blob) GetID(parent ...string) string {

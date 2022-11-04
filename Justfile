@@ -11,7 +11,7 @@ default: format-just
     @just --choose
 
 # ────────────────────────────────────────────────────────────────────────────────
-clean: teardown-lxc
+clean: teardown-lxc clean-go
 
 #
 # ──────────────────────────────────────────────────────────────── I ──────────
@@ -896,7 +896,30 @@ format-just:
 build:
     #!/usr/bin/env bash
     set -euo pipefail
+    rm -rf "{{ justfile_directory() }}/bin"
     mage build
+
+clean-go:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sudo pkill -SIGTERM soil || true 
+    sudo rm -rf "{{ justfile_directory() }}/tmp"
+    mkdir -p "{{ justfile_directory() }}/tmp"
+
+# ────────────────────────────────────────────────────────────────────────────────
+
+# run: build clean-go
+run:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    COMMAND="sudo"
+    COMMAND+=" {{ justfile_directory() }}/bin/soil"
+    COMMAND+=" agent"
+    configs=($(find "{{ justfile_directory() }}/fixture/soil" -type f -name '*.hcl'))
+    for config in "${configs[@]}"; do
+      COMMAND+=" --config=${config}"
+    done
+    $COMMAND > {{ justfile_directory() }}/tmp/soil.log 2>&1 &
 
 # ────────────────────────────────────────────────────────────────────────────────
 

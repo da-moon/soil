@@ -2,14 +2,15 @@ package agent
 
 import (
 	"context"
-	"github.com/akaspin/cut"
-	"github.com/akaspin/logx"
-	agentcore "github.com/da-moon/soil/agent"
-	"github.com/spf13/cobra"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+
+	"github.com/akaspin/cut"
+	"github.com/akaspin/logx"
+	agentcore "github.com/da-moon/soil/agent/server"
+	"github.com/spf13/cobra"
 )
 
 type AgentOptions struct {

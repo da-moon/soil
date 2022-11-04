@@ -1,7 +1,7 @@
 //go:build ide || (test_systemd && !test_without_cluster)
 // +build ide test_systemd,!test_without_cluster
 
-package agent_test
+package server_test
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/akaspin/logx"
-	"github.com/da-moon/soil/agent"
+	"github.com/da-moon/soil/agent/server"
 	"github.com/da-moon/soil/fixture"
 	"github.com/da-moon/soil/lib"
 	"github.com/da-moon/soil/manifest"
@@ -31,14 +31,14 @@ func TestServer_Configure_Consul(t *testing.T) {
 	os.RemoveAll("testdata/.test_server.hcl")
 
 	log := logx.GetLog("test")
-	serverOptions := agent.ServerOptions{
+	serverOptions := server.ServerOptions{
 		ConfigPath: []string{
 			"testdata/.test_server.hcl",
 		},
 		Meta:    map[string]string{},
 		Address: fmt.Sprintf(":%d", fixture.RandomPort(t)),
 	}
-	server := agent.NewServer(context.Background(), log, serverOptions)
+	server := server.NewServer(context.Background(), log, serverOptions)
 	defer server.Close()
 
 	consulServer := fixture.NewConsulServer(t, nil)

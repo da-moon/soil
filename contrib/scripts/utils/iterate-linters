@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# vi: ft=sh tabstop=2 shiftwidth=2 softtabstop=2 expandtab:
+linters=($(cat .golangci.yml | yq -r '.linters.enable[]'))
+mkdir -p tmp/
+for linter in "${linters[@]}"; do
+  cat .golangci.yml | yq -r ".linters.enable[]|=\"$linter\"" | yq --yaml-output > /tmp/linter.yml
+  golangci-lint run --print-issued-lines=false --exclude-use-default=false --config /tmp/linter.yml > tmp/${linter}.txt
+done
+rm -f /tmp/linter.yml
+exit 0
+
+# group based on fields
+# [ NOTE ] https://unix.stackexchange.com/a/506969
+
+awk '
+{
+  group[$2] = (group[$2] == "" ? $1 : group[$2] OFS $1 ) 
+} 
+END { 
+  for (group_name in group) print group_name, group[group_name] 
+}' tmp/staticcheck.txt

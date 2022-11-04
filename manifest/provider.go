@@ -2,9 +2,10 @@ package manifest
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
-	"strings"
 )
 
 type Providers []Provider
@@ -20,10 +21,13 @@ func (p *Providers) Append(v interface{}) (err error) {
 }
 
 // Resource provider
+//go:generate gomodifytags -override -file $GOFILE -struct Provider -add-tags json -w -transform snakecase
 type Provider struct {
-	Kind   string                 // Resource kind: range, pool ...
-	Name   string                 // Logical name unique within pod
-	Config map[string]interface{} `json:",omitempty"`
+	// Resource kind: range, pool ...
+	Kind string `json:"kind"`
+	// Logical name unique within pod
+	Name   string                 `json:"name"`
+	Config map[string]interface{} `json:"config,omitempty"`
 }
 
 func (p Provider) GetID(parent ...string) string {

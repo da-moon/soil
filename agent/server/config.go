@@ -1,12 +1,13 @@
-package agent
+package server
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/hashicorp/hcl"
-	"github.com/hashicorp/hcl/hcl/ast"
 	"io"
 	"os"
+
+	"github.com/hashicorp/hcl"
+	"github.com/hashicorp/hcl/hcl/ast"
 )
 
 // Agent - specific config

@@ -1,13 +1,13 @@
 //go:build ide || test_systemd
 // +build ide test_systemd
 
-package agent_test
+package server_test
 
 import (
 	"context"
 	"fmt"
 	"github.com/akaspin/logx"
-	"github.com/da-moon/soil/agent"
+	"github.com/da-moon/soil/agent/server"
 	"github.com/da-moon/soil/fixture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,14 +44,14 @@ func TestServer_Configure_Local(t *testing.T) {
 	defer fixture.DestroyUnits("pod-*", "unit-*")
 
 	os.RemoveAll("testdata/.test_server.hcl")
-	serverOptions := agent.ServerOptions{
+	serverOptions := server.ServerOptions{
 		ConfigPath: []string{
 			"testdata/.test_server.hcl",
 		},
 		Meta:    map[string]string{},
 		Address: fmt.Sprintf(":%d", fixture.RandomPort(t)),
 	}
-	server := agent.NewServer(context.Background(), logx.GetLog("test"), serverOptions)
+	server := server.NewServer(context.Background(), logx.GetLog("test"), serverOptions)
 	require.NoError(t, server.Open())
 
 	allUnitNames := []string{

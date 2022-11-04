@@ -2,13 +2,14 @@ package manifest
 
 import (
 	"encoding/json"
+	"hash/crc64"
+	"io"
+	"strings"
+
 	"github.com/da-moon/soil/lib"
 	"github.com/hashicorp/go-multierror"
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
-	"hash/crc64"
-	"io"
-	"strings"
 )
 
 const (
@@ -49,16 +50,17 @@ func (r *PodSlice) Unmarshal(namespace string, reader ...io.Reader) (err error) 
 }
 
 // Pod manifest
+//go:generate gomodifytags -override -file $GOFILE -struct Pod -add-tags json -w -transform snakecase
 type Pod struct {
-	Namespace  string
-	Name       string
-	Runtime    bool
-	Target     string
-	Constraint Constraint `json:",omitempty"`
-	Units      Units      `json:",omitempty" hcl:"-"`
-	Blobs      Blobs      `json:",omitempty" hcl:"-"`
-	Resources  Resources  `json:",omitempty" hcl:"-"`
-	Providers  Providers  `json:",omitempty" hcl:"-"`
+	Namespace  string     `json:"namespace"`
+	Name       string     `json:"name"`
+	Runtime    bool       `json:"runtime"`
+	Target     string     `json:"target"`
+	Constraint Constraint `json:"constraint,omitempty"`
+	Units      Units      `json:"units,omitempty" hcl:"-"`
+	Blobs      Blobs      `json:"blobs,omitempty" hcl:"-"`
+	Resources  Resources  `json:"resources,omitempty" hcl:"-"`
+	Providers  Providers  `json:"providers,omitempty" hcl:"-"`
 }
 
 func (p Pod) GetID(parent ...string) string {

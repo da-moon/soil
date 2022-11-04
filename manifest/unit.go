@@ -1,9 +1,10 @@
 package manifest
 
 import (
+	"strings"
+
 	"github.com/hashicorp/hcl"
 	"github.com/hashicorp/hcl/hcl/ast"
-	"strings"
 )
 
 type Units []Unit
@@ -24,10 +25,11 @@ func (u *Units) Append(v interface{}) (err error) {
 	return
 }
 
+//go:generate gomodifytags -override -file $GOFILE -struct Unit -add-tags json -w -transform snakecase
 type Unit struct {
-	Transition `json:",omitempty" hcl:",squash"`
-	Name       string
-	Source     string
+	Transition `json:"transition,omitempty" hcl:",squash"`
+	Name       string `json:"name"`
+	Source     string `json:"source"`
 }
 
 func (u Unit) GetID(parent ...string) string {
@@ -42,9 +44,10 @@ func (u *Unit) ParseAST(raw *ast.ObjectItem) (err error) {
 }
 
 // Unit transition
+//go:generate gomodifytags -override -file $GOFILE -struct Transition -add-tags json -w -transform snakecase
 type Transition struct {
-	Create    string `json:",omitempty"`
-	Update    string `json:",omitempty"`
-	Destroy   string `json:",omitempty"`
-	Permanent bool   `json:",omitempty"`
+	Create    string `json:"create,omitempty"`
+	Update    string `json:"update,omitempty"`
+	Destroy   string `json:"destroy,omitempty"`
+	Permanent bool   `json:"permanent,omitempty"`
 }
